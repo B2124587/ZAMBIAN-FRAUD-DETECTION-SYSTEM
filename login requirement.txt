@@ -1,3 +1,4 @@
 admin / admin123
 analyst / analyst123
 operator / operator12
+ python -m streamlit run app_dashboard.py
