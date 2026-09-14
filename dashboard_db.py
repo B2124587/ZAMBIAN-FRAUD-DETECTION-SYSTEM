@@ -26,28 +26,13 @@ load_dotenv()
 # ENGINE FACTORY
 # ─────────────────────────────────────────────
 
+from db_config import get_engine, DB_TYPE
+
 def _build_engine(url: str | None = None):
     if url:
-        return create_engine(url, pool_pre_ping=True, pool_recycle=3600)
-
-    # Credentials must come from environment variables — never hardcode them.
-    required = ["DB_USER", "DB_PASSWORD", "DB_HOST", "DB_NAME"]
-    missing = [k for k in required if not os.getenv(k)]
-    if missing:
-        raise RuntimeError(
-            f"Missing required database environment variable(s): {missing}. "
-            "Set them in your .env file (see .env.example)."
-        )
-    db_user = os.getenv("DB_USER")
-    db_pass = urllib.parse.quote_plus(os.getenv("DB_PASSWORD"))
-    db_host = os.getenv("DB_HOST")
-    db_port = os.getenv("DB_PORT", "3306")
-    db_name = os.getenv("DB_NAME")
-
-    database_url = (
-        f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-    )
-    return create_engine(database_url, pool_pre_ping=True, pool_recycle=3600)
+        return create_engine(url, pool_pre_ping=True, pool_recycle=3600), "Custom URL"
+    
+    return get_engine(), DB_TYPE
 
 
 # ─────────────────────────────────────────────
@@ -61,7 +46,7 @@ class DashboardDBConnector:
     """
 
     def __init__(self, database_url: str | None = None):
-        self._engine = _build_engine(database_url)
+        self._engine, self.db_type = _build_engine(database_url)
 
     # ------------------------------------------------------------------
     # Connection health
@@ -144,11 +129,16 @@ class DashboardDBConnector:
         params["threshold"] = threshold
         params["lim"] = limit
 
+        masked_sender_sql = (
+            "SUBSTR(t.sender_msisdn, 1, 8) || '****'" if self.db_type == "SQLite fallback"
+            else "CONCAT(SUBSTRING(t.sender_msisdn, 1, 8), '****')"
+        )
+
         sql = f"""
             SELECT
                 t.txn_id,
                 t.timestamp,
-                CONCAT(SUBSTRING(t.sender_msisdn, 1, 8), '****') AS masked_sender,
+                {masked_sender_sql} AS masked_sender,
                 t.amount,
                 t.operator,
                 t.province,
@@ -257,12 +247,16 @@ class DashboardDBConnector:
             operators, provinces, risk_levels, date_from, date_to
         )
         params["lim"] = limit
+        masked_sender_sql = (
+            "SUBSTR(t.sender_msisdn, 1, 8) || '****'" if self.db_type == "SQLite fallback"
+            else "CONCAT(SUBSTRING(t.sender_msisdn, 1, 8), '****')"
+        )
         sql = f"""
             SELECT
                 r.score_id,
                 t.txn_id,
                 t.timestamp,
-                CONCAT(SUBSTRING(t.sender_msisdn, 1, 8), '****') AS masked_sender,
+                {masked_sender_sql} AS masked_sender,
                 t.amount,
                 t.operator,
                 t.province,
@@ -318,12 +312,16 @@ class DashboardDBConnector:
 
     def search_by_msisdn(self, msisdn_fragment: str, limit: int = 50) -> pd.DataFrame:
         """Search audit queue by partial sender MSISDN (hashed prefix)."""
-        sql = """
+        masked_sender_sql = (
+            "SUBSTR(t.sender_msisdn, 1, 8) || '****'" if self.db_type == "SQLite fallback"
+            else "CONCAT(SUBSTRING(t.sender_msisdn, 1, 8), '****')"
+        )
+        sql = f"""
             SELECT
                 r.score_id,
                 t.txn_id,
                 t.timestamp,
-                CONCAT(SUBSTRING(t.sender_msisdn, 1, 8), '****') AS masked_sender,
+                {masked_sender_sql} AS masked_sender,
                 t.amount,
                 t.operator,
                 t.province,
@@ -441,9 +439,13 @@ class DashboardDBConnector:
 
     def get_risk_score_distribution(self) -> pd.DataFrame:
         """Score distribution bucketed by 10-point intervals."""
-        sql = """
+        score_bucket_sql = (
+            "CAST(numeric_score / 10 AS INTEGER) * 10" if self.db_type == "SQLite fallback"
+            else "FLOOR(numeric_score / 10) * 10"
+        )
+        sql = f"""
             SELECT
-                FLOOR(numeric_score / 10) * 10 AS score_bucket,
+                {score_bucket_sql} AS score_bucket,
                 COUNT(*) AS count
             FROM risk_scores_audit
             GROUP BY score_bucket

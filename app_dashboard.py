@@ -137,10 +137,12 @@ def render_sidebar(db: DashboardDBConnector) -> dict:
 
         connected = db.ping()
         ui.render_connection_status(connected)
-        if not connected:
+        if connected:
+            st.caption(f"Backend: **{db.db_type}**")
+        else:
             st.error(
-                "Cannot reach MySQL. Check your `.env` credentials and confirm "
-                "the database server is running and reachable."
+                f"Cannot reach database ({db.db_type}). Check your configuration "
+                "and ensure the database is accessible."
             )
 
         ui.section_header("Global Filters")

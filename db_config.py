@@ -33,25 +33,44 @@ load_dotenv()
 # Copy .env.example to .env and fill in real values before running anything.
 # ─────────────────────────────────────────────
 
-def _build_database_url() -> str:
+DB_TYPE = "Unknown"
+
+def _build_engine_and_type():
+    global DB_TYPE
+    
+    # 1. DATABASE_URL environment variable
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        DB_TYPE = "Configured URL"
+        return create_engine(db_url, echo=False, pool_pre_ping=True)
+
+    # 2. Try configured MySQL
     required = ["DB_USER", "DB_PASSWORD", "DB_HOST", "DB_NAME"]
     missing = [k for k in required if not os.getenv(k)]
-    if missing:
-        raise RuntimeError(
-            f"Missing required database environment variable(s): {missing}. "
-            "Set them in your .env file (see .env.example) — credentials are "
-            "no longer hardcoded in source."
-        )
-    db_user = os.getenv("DB_USER")
-    db_pass = urllib.parse.quote_plus(os.getenv("DB_PASSWORD"))
-    db_host = os.getenv("DB_HOST")
-    db_port = os.getenv("DB_PORT", "3306")
-    db_name = os.getenv("DB_NAME")
-    return f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    if not missing:
+        db_user = os.getenv("DB_USER")
+        db_pass = urllib.parse.quote_plus(os.getenv("DB_PASSWORD"))
+        db_host = os.getenv("DB_HOST")
+        db_port = os.getenv("DB_PORT", "3306")
+        db_name = os.getenv("DB_NAME")
+        mysql_url = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+        eng = create_engine(mysql_url, echo=False, pool_pre_ping=True, pool_recycle=3600)
+        try:
+            with eng.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            DB_TYPE = "MySQL"
+            return eng
+        except Exception:
+            pass # fallback to sqlite
 
+    # 3. SQLite fallback
+    DB_TYPE = "SQLite fallback"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    sqlite_path = os.path.join(base_dir, "fraud_system.db")
+    return create_engine(f"sqlite:///{sqlite_path}", echo=False, pool_pre_ping=True)
 
-DATABASE_URL = _build_database_url()
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True, pool_recycle=3600)
+engine = _build_engine_and_type()
+DATABASE_URL = str(engine.url)
 
 # ─────────────────────────────────────────────
 # MSISDN HASH SECRET
@@ -601,7 +620,18 @@ def populate_database(n_users: int = 500, n_transactions: int = 5200):
     return users, transactions
 
 
+_sqlite_initialized = False
+
 def get_engine():
+    global _sqlite_initialized
+    if DB_TYPE == "SQLite fallback" and not _sqlite_initialized:
+        _sqlite_initialized = True
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        sqlite_path = os.path.join(base_dir, "fraud_system.db")
+        if not os.path.exists(sqlite_path) or os.path.getsize(sqlite_path) == 0:
+            print("[db_config] Initializing SQLite fallback database...")
+            create_schema()
+            populate_database()
     return engine
 
 
