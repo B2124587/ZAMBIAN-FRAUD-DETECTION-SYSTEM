@@ -13,9 +13,24 @@ Run with:
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
+
+# ─────────────────────────────────────────────
+# SECRETS BRIDGE: Streamlit Cloud → os.environ
+# Streamlit Cloud does not read .env files — secrets are set in the app's
+# Settings → Secrets panel and exposed via st.secrets.  This loop copies
+# them into os.environ so that db_config.py (which reads os.getenv) works
+# identically in both local and cloud environments.
+# If st.secrets is empty (e.g. local dev without secrets.toml), this
+# no-ops and falls through to .env / real env vars as usual.
+# ─────────────────────────────────────────────
+for _key in ("DB_USER", "DB_PASSWORD", "DB_HOST", "DB_PORT", "DB_NAME",
+             "MSISDN_HASH_SECRET", "FRAUD_API_KEYS"):
+    if _key in st.secrets:
+        os.environ[_key] = str(st.secrets[_key])
 
 import dashboard_ui as ui
 from dashboard_db import DashboardDBConnector
@@ -24,6 +39,7 @@ import auth
 import alerts
 import overrides
 import compliance
+from live_test_tab import render_live_test_tab
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG (must be the first Streamlit call)
@@ -714,6 +730,10 @@ def main():
         tabs.append("🔄 Retrain Model")
         tabs.append("📋 Compliance Reports")
 
+    # Live Test tab visible to analyst and admin roles
+    if auth.has_role(st.session_state.user, "analyst"):
+        tabs.append("🧪 Live Test")
+
     st_tabs = st.tabs(tabs)
 
     with st_tabs[0]:
@@ -747,6 +767,11 @@ def main():
     if "📋 Compliance Reports" in tabs:
         with st_tabs[idx]:
             render_tab_compliance()
+        idx += 1
+
+    if "🧪 Live Test" in tabs:
+        with st_tabs[idx]:
+            render_live_test_tab()
 
 
 if __name__ == "__main__":
