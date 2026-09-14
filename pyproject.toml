@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Start narrow: pyflakes (F) catches real bugs — undefined names, unused
+# imports, unused variables — without enforcing a style on existing code.
+# Widen this (add "E", "I", "UP", etc.) once the codebase has been formatted.
+select = ["F", "E9"]

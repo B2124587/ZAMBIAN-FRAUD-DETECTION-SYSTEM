@@ -1,0 +1,29 @@
+# ── Core / database ──
+SQLAlchemy>=2.0
+PyMySQL>=1.1
+cryptography>=42.0          # required by PyMySQL for some MySQL auth plugins
+python-dotenv>=1.0
+
+# ── Data & ML (Sprint 1 & 2 pipeline) ──
+pandas>=2.0
+numpy>=1.26
+scikit-learn>=1.4
+xgboost>=2.0
+imbalanced-learn>=0.12
+
+# ── API (Sprint 1 & 2 — migrated to FastAPI) ──
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+gunicorn>=21.2
+httpx>=0.27          # required by fastapi.testclient (used in main.py's API test)
+
+# ── Dashboard (Sprint 3) ──
+streamlit>=1.32
+plotly>=5.20
+
+# ── Retraining scheduler (FR-13) ──
+apscheduler>=3.10
+
+# ── PDF compliance report (FR-15) ──
+reportlab>=4.0

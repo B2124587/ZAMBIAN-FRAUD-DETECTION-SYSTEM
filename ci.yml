@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    # Dummy config so app.py/db_config.py can be imported without a real
+    # database. No live DB is required — see tests/conftest.py.
+    env:
+      DB_USER: test
+      DB_PASSWORD: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: test_db
+      MSISDN_HASH_SECRET: ci-test-secret-do-not-use-in-prod
+      FRAUD_API_KEYS: ci-test-key-123
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Run tests
+        run: pytest tests/ -v
